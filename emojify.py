@@ -1,21 +1,25 @@
 import re
 
 import numpy as np
-from nltk import SnowballStemmer, WhitespaceTokenizer
+
 from numpy import dot
 from numpy.linalg import norm
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
+import string
 
 import pandas as pd
 import json
 import spacy
+from spacy.matcher import Matcher
+
 from tqdm import tqdm
 import sklearn.metrics
 
+
+import preprocessing as pp
+
 text = """
 On a dark desert highway, cool wind in my hair
-Warm smell of colitas, rising up through the air
+"Warm smell of colitas, rising up through the air"
 Up ahead in the distance, I saw a shimmering light
 My head grew heavy and my sight grew dim
 I had to stop for the night
@@ -39,12 +43,12 @@ def load_emojis():
 
 emojis = load_emojis()
 
-pd.DataFrame(emojis, columns=['name', 'unicode', 'keywords'])#.head()
+pd.DataFrame(emojis, columns=['name', 'unicode', 'keywords'])
 
 nlp = spacy.load("en_core_web_sm")
 
-with open('./data/glove.6B.300d.txt', 'r') as f:
-    for line in tqdm(f, total=400000):
+with open('./data/glove.6B.100d.txt', 'r') as f:
+    for line in tqdm(f, total=402389):
         parts = line.split()
         word = parts[0]
         vec = np.array([float(v) for v in parts[1:]], dtype='f')
@@ -59,80 +63,78 @@ def most_similar(vectors, vec):
     return np.argsort(-dst), np.sort(-dst)
 
 
-def emojify(s, most_n=1, threshold=0.02, debug=False):
-    v = nlp(str.join('',s)).vector
+def emojify(word, most_n=1):
+    v = nlp(str.join('', word)).vector
 
     ids, dst = most_similar(doc_vectors, v)
     ids = ids[:most_n]
     dst = dst[:most_n] * -1
-    html = []
+    e_res = []
     for name, unicode, keywords in emojis[ids]:
         values = unicode.split(' ')
         for v in values:
             c = chr(int(v.replace('U+', ''), 16))
-            html.append(c)
-    dstr = ' (' + str(dst) + ', '+ str(ids) + ')' if debug else ''
+            e_res.append(c)
+
+    #TODO random choice and most_n>1?
+
+    return dst, e_res, ids
+
+def eprint(word, e_res, threshold = 0.02, debug = False):
+    dstr = ' (' + str(dst) + ', ' + str(ids) + ')' if debug else ''
+    emoji = ' '.join([x for x in e_res])
     if dst < threshold:
-        print(s + ' {}'.format(' '.join([x for x in html])) + dstr, end=" ")
+        print(word + ' {}'.format(emoji) + dstr, end=" ")
     else:
-        print(s + dstr, end=" ")
+        print(word + dstr, end=" ")
 
-def w_tokenizer(text):
-    tokenizer = WhitespaceTokenizer()
-    # Use tokenize method
-    tokenized_list = tokenizer.tokenize(text)
-    return (tokenized_list)
+orig, words = pp.preprocess(text)
+o2w = dict(zip(orig, words))
 
-def stemmer_snowball(text_list):
-    snowball = SnowballStemmer(language='english')
-    return_list = []
-    for i in range(len(text_list)):
-        return_list.append(snowball.stem(text_list[i]))
-    return(return_list)
+w2e = dict()
+for word in words:
+    if word not in w2e.keys():
+        dst, e_res, ids = emojify(word, 1)
+    w2e[word] = e_res
 
-def preprocessor_final(text):
-    if isinstance((text), (str)):
-        text = re.sub('<[^>]*>', '', text)
-        text = re.sub('[\W]+', '', text.lower())
-        return text
-    if isinstance((text), (list)):
-        return_list = []
-        for i in range(len(text)):
-            temp_text = re.sub('<[^>]*>', '', text[i])
-            temp_text = re.sub('[\W]+', '', temp_text.lower())
-            return_list.append(temp_text)
-        return(return_list)
-    else:
-        pass
+replace = False # word -> emoji vs. word -> word + emoji
+# process original text, retain formatting
+doc = nlp(text)
+newline = True
+for oword in doc:
+    oword = oword.text
 
-def pipelinize(function, active=True):
-    def list_comprehend_a_function(list_or_series, active=True):
-        if active:
-            return [function(i) for i in list_or_series]
-        else: # if it's not active, just pass it right back
-            return list_or_series
-    return FunctionTransformer(list_comprehend_a_function, validate=False, kw_args={'active':active})
+    pre = '' if replace else oword + " "
+    #'\n ',
+    if oword in string.punctuation :
+        # print(" "*(not newline), end="")
+        print(oword, end="")#*(not newline))
+        # if newline and punct: dont " "
+        nowhiteafter = ['"', "'"]
+        if oword in nowhiteafter:
+            newline = True
+        else:
+            newline = False
+        continue
+    if oword in string.whitespace:
+        print(oword, end="")
+        newline = True
+        continue
 
+    print(" "*(not newline) + pre + " ".join(w2e[o2w[oword]]), end="")
+    newline = False
 
-estimators = [
-                ('tokenizer', pipelinize(w_tokenizer)),
-                # ('stemmer', pipelinize(stemmer_snowball)),
-                ('preprocessor', pipelinize(preprocessor_final))
-              ]
+# print("####################")
+#
+# for oword in orig:
+#     if oword not in string.punctuation:
+#         pre = oword if not replace else ''
+#
+#         transl = text.replace(oword, pre + ' '.join(w2e[o2w[oword]]))
+# print(transl)
+#print("\n")
 
-pipe = Pipeline(estimators)
-
-sents = pipe.transform([text])
-
-import itertools
-words = list(itertools.chain(*sents)) # remove sentence structure
-
-print("\n#######")
-threshold = 1
-for w in words:
-    emojify(w, 1, threshold, debug=False)
-
-print("\n#######")
-threshold = 0.02
-for w in words:
-    emojify(w, 1, threshold, debug=False)
+# print("\n#######")
+# threshold = 0.02
+# for w in words:
+#     emojify(w, 1, threshold, debug=False)
