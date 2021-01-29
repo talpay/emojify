@@ -1,6 +1,6 @@
 # emojify
 
-word2emoji: Translating text to emojis using GloVe embeddings and emoji keywords. Still needs proper stop word removal, similarity thresholding, ranking, blacklisting (ℹ, 🆕), a prioritized lookup table, and other features to be more accurate.
+word2emoji: Translating text to emojis using GloVe embeddings and sense labels from [EmojiNet](http://emojinet.knoesis.org/home.php) ([paper](https://arxiv.org/abs/1707.04652)). Still needs proper stop word removal, similarity thresholding, ranking, blacklisting, a prioritized lookup table, and other features to be more accurate.
 
 Example 1: 
 ```
